@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BLKOUT — Desenhe sua própria camisa</title>
+<!-- Fontes: Anton (títulos industriais) + Inter (corpo) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- FontAwesome, Tailwind e Three.js (+ OrbitControls) via CDN, versões fixas -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+  :root{--bg:#0a0a0a;--panel:#161616;--line:#2a2a2a;--wine:#800020;--wine-d:#600018;--wine-l:#a51c30;--ink:#ece8e1;--mute:#8d8a85}
+  html{scroll-behavior:smooth}
+  /* Fontes próprias: instaladas no sistema ou colocadas na pasta fonts/ ao lado do index.html. Sem elas, cai para Anton. */
+  @font-face{font-family:'Street Vibes';src:local('Street Vibes'),local('StreetVibes'),url('fonts/StreetVibes.woff2') format('woff2'),url('fonts/StreetVibes.ttf') format('truetype');font-display:swap}
+  @font-face{font-family:'Smegs';src:local('Smegs'),url('fonts/Smegs.woff2') format('woff2'),url('fonts/Smegs.ttf') format('truetype');font-display:swap}
+  .logo{font-family:'Street Vibes','Anton',sans-serif;letter-spacing:.12em}
+  .slogan{font-family:'Smegs','Anton',sans-serif;text-transform:uppercase;line-height:.95}
+  body{background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;margin:0;overflow-x:hidden}
+  .display{font-family:'Anton',sans-serif;text-transform:uppercase;letter-spacing:.02em;line-height:.95}
+  /* textura sutil de tecido/asfalto */
+  .grain{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.015) 0 1px,transparent 1px 4px)}
+  :focus-visible{outline:2px solid var(--wine-l);outline-offset:3px}
+  .btn{background:var(--wine);color:#fff;font-weight:600;padding:.95rem 1.6rem;transition:transform .2s,background .2s;display:inline-flex;gap:.6rem;align-items:center;cursor:pointer;border:0}
+  .btn:hover{background:var(--wine-l)} .btn:active{transform:scale(.97)}
+  .btn.ghost{background:transparent;border:1px solid var(--line)} .btn.ghost:hover{border-color:var(--wine-l)}
+
+  /* Configurador: palco 3D + painel deslizante (mobile = gaveta inferior, desktop = lateral) */
+  #configurator{display:flex;flex-direction:column;position:relative;isolation:isolate}
+  #stage{position:relative;height:46svh;min-height:300px;min-width:0;overflow:hidden;background:radial-gradient(ellipse at 50% 45%,#231014 0,#0a0a0a 68%)}
+  #stage canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:grab;touch-action:pan-y} #stage canvas:active{cursor:grabbing}
+  #panel{background:var(--panel);border-top:1px solid var(--line)}
+  @media(min-width:768px){
+    #configurator{flex-direction:row;align-items:flex-start}
+    #stage{flex:1;height:100svh}
+    #panel{width:340px;flex:none;border-top:0;border-left:1px solid var(--line)}
+  }
+  .group{padding:1.1rem 1.25rem;border-bottom:1px solid var(--line)}
+  .group h3{font-family:'Anton';text-transform:uppercase;letter-spacing:.08em;font-size:1rem;margin:0 0 .75rem;font-weight:400}
+  .chips{display:flex;flex-wrap:wrap;gap:.5rem}
+  .chip{border:1px solid var(--line);background:#101010;color:var(--ink);padding:.55rem .8rem;font-size:.85rem;cursor:pointer;transition:all .2s}
+  .chip:hover{border-color:var(--wine-l)}
+  .chip.active{background:var(--wine);border-color:var(--wine-l);color:#fff;transform:translateY(-1px)}
+  .swatch{width:2.4rem;height:2.4rem;border-radius:50%;border:2px solid #333;cursor:pointer;transition:transform .2s,border-color .2s}
+  .swatch:hover{transform:scale(1.1)} .swatch.active{border-color:var(--wine-l);box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--wine-l)}
+  .viewbar{position:absolute;left:50%;bottom:1rem;transform:translateX(-50%);display:flex;gap:.4rem;z-index:5}
+  .viewbar button{background:rgba(10,10,10,.75);border:1px solid var(--line);color:var(--ink);padding:.45rem .9rem;font-size:.8rem;cursor:pointer;backdrop-filter:blur(6px)}
+  .viewbar button:hover{border-color:var(--wine-l)}
+  #toggle{position:absolute;top:1rem;left:1rem;z-index:5;background:rgba(10,10,10,.75);border:1px solid var(--line);color:var(--ink);padding:.55rem .9rem;font-size:.85rem;cursor:pointer}
+  /* Modal */
+  #modal{overflow-y:auto;position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:1rem;z-index:50;opacity:0;pointer-events:none;transition:opacity .3s}
+  #modal.show{opacity:1;pointer-events:auto}
+  #modal .card{background:var(--panel);border:1px solid var(--line);max-width:760px;width:100%;margin:auto;transform:translateY(24px) scale(.97);transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+  #modal.show .card{transform:none}
+  dl.spec{display:grid;grid-template-columns:auto 1fr;gap:.5rem 1.2rem;font-size:.92rem;margin:0}
+  dl.spec dt{color:var(--mute)} dl.spec dd{margin:0;text-align:right}
+  .toast{position:fixed;bottom:1.5rem;left:50%;transform:translate(-50%,40px);background:var(--wine);padding:.7rem 1.2rem;opacity:0;transition:all .3s;z-index:60}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  @media(prefers-reduced-motion:reduce){*{transition-duration:.01ms!important;animation-duration:.01ms!important}}
+  /* Única animação "orquestrada": entrada do hero */
+  @keyframes rise{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:none}}
+  .hero-in>*{animation:rise .9s cubic-bezier(.2,.8,.2,1) both}
+  .hero-in>*:nth-child(2){animation-delay:.12s}.hero-in>*:nth-child(3){animation-delay:.24s}.hero-in>*:nth-child(4){animation-delay:.36s}
+</style>
+</head>
+<body class="grain">
+
+<!-- ============ HERO ============ -->
+<header class="relative min-h-[100svh] flex flex-col justify-between px-5 md:px-12 py-6 overflow-hidden">
+  <nav class="flex justify-between items-center relative z-10">
+    <span class="logo text-3xl">BLKOUT</span>
+    <a href="#configurator" class="text-sm text-[color:var(--mute)] hover:text-white transition">Configurador</a>
+  </nav>
+  <div aria-hidden="true" class="display absolute -right-6 top-1/2 -translate-y-1/2 text-[38vw] md:text-[30vw] text-[color:var(--wine-d)] opacity-40 select-none leading-none">BLK</div>
+  <div class="hero-in relative z-10 max-w-3xl pb-10">
+    <p class="text-[color:var(--mute)] mb-5 max-w-md">Escolha a peça, modele o caimento, aplique suas estampas e gire a camisa em 360° antes de aprovar a amostra.</p>
+    <h1 class="slogan text-[14vw] md:text-[8rem]">Desenhe sua própria camisa</h1>
+    <div class="mt-8 flex flex-wrap gap-3">
+      <a href="#configurator" class="btn"><i class="fa-solid fa-cube"></i> Abrir configurador</a>
+      <a href="#amostra" class="btn ghost">Ver resumo da amostra</a>
+    </div>
+  </div>
+</header>
+
+<!-- ============ CONFIGURADOR 3D ============ -->
+<section id="configurator" aria-label="Configurador 3D da camiseta">
+  <div id="stage">
+    
+  </div>
+  <aside id="panel" aria-label="Painel de personalização">
+    <div id="panel-inner">
+      <div class="group"><h3>Peça</h3><div class="chips" id="pieces"></div></div>
+      <div class="group"><h3>Modelagem</h3><div class="chips" id="fits"></div></div>
+      <div class="group"><h3>Tamanho</h3><div class="chips" id="sizes"></div></div>
+      <div class="group"><h3>Cor — <span id="colorName" class="text-[color:var(--wine-l)]"></span></h3><div class="flex flex-wrap gap-3" id="colors"></div></div>
+      <div class="group"><h3>Estampa</h3><div class="chips" id="styles"></div>
+        <label class="chip mt-3 inline-block" for="upload"><i class="fa-solid fa-upload"></i>&nbsp; Enviar minha imagem</label>
+        <input id="upload" type="file" accept="image/*" class="sr-only"></div>
+      <div class="group"><h3>Posição</h3><div class="chips" id="positions"></div>
+        <button class="btn ghost w-full justify-center mt-4" id="addPrint"><i class="fa-solid fa-plus"></i> Adicionar estampa</button></div>
+      <div class="group"><h3>Estampas na peça</h3><ul id="printList" class="space-y-2 text-sm"></ul></div>
+      <div class="group"><button class="btn w-full justify-center" data-open-modal><i class="fa-solid fa-scissors"></i> Gerar amostra</button></div>
+    </div>
+  </aside>
+</section>
+
+<!-- ============ RESUMO / SALVAR AMOSTRA ============ -->
+<section id="amostra" class="px-5 md:px-12 py-20 md:py-28">
+  <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-10 items-end">
+    <div>
+      <h2 class="display text-6xl md:text-8xl">Salvar<br>amostra</h2>
+      <p class="mt-5 text-[color:var(--mute)] max-w-sm">A ficha técnica acompanha o que você vê no 3D. Exporte a imagem ou copie as medidas para o ateliê.</p>
+    </div>
+    <div class="bg-[color:var(--panel)] border border-[color:var(--line)] p-6">
+      <dl class="spec" id="summary"></dl>
+      <button class="btn w-full justify-center mt-6" data-open-modal><i class="fa-solid fa-scissors"></i> Gerar amostra</button>
+    </div>
+  </div>
+</section>
+<footer class="px-5 md:px-12 py-8 border-t border-[color:var(--line)] text-sm text-[color:var(--mute)]">BLKOUT — projeto de amostra visual, sem valores.</footer>
+
+<!-- ============ MODAL ============ -->
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="card">
+    <div class="grid md:grid-cols-2">
+      <div class="bg-black flex items-center justify-center p-4"><img id="snap" alt="Pré-visualização da camiseta" class="max-h-[38svh] w-full object-contain"></div>
+      <div class="p-6 flex flex-col gap-5">
+        <h2 id="mTitle" class="display text-4xl">Ficha técnica</h2>
+        <dl class="spec" id="specs"></dl>
+        <div class="flex flex-col gap-2 mt-auto">
+          <a id="save" class="btn justify-center" download="amostra-bordo.png"><i class="fa-solid fa-image"></i> Salvar imagem de pré-visualização</a>
+          <button id="copy" class="btn ghost justify-center"><i class="fa-regular fa-copy"></i> Copiar especificações</button>
+          <button id="close" class="btn ghost justify-center">Voltar ao configurador</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ================= DADOS ================= */
+const $ = s => document.querySelector(s);
+// Fits: w = largura, h = altura do corpo, sl = comprimento da manga
+const FITS = {
+  normal:{n:'Normal',w:1,h:1,sl:1},
+  oversized:{n:'Oversized',w:1.28,h:1.05,sl:1.15},
+  cropped:{n:'Cropped',w:1.12,h:.74,sl:.9},
+  babylook:{n:'Babylook',w:.82,h:.86,sl:.72}
+};
+const SIZES = {P:.92,M:1,G:1.06,GG:1.12,XGG:1.18};
+const COLORS = [['Preto Washed','#1f1f1f'],['Off-White','#e6e1d3'],['Cinza Chumbo','#3b3f42'],['Verde Oliva','#4a5230'],['Azul Petróleo','#1d4c58'],['Vermelho Bordô','#800020']];
+const STYLES = {typo:'Minimalista',tech:'Cyberpunk / Techwear',vintage:'Vintage Washed',abstract:'Abstrato Underground'};
+const POS = {left:'Peito esquerdo',center:'Peito central',back:'Costas oversized'};
+const PIECES = {tee:'Camiseta',shirt:'Camisa de botão'};
+// style/pos = seleção atual; prints = estampas já aplicadas (uma por posição)
+const state = {piece:'tee',fit:'oversized',size:'M',color:COLORS[0],style:'typo',pos:'center',prints:[{style:'typo',pos:'center',img:null}]};
+let userImg = null;
+
+/* ================= UI: gera os botões ================= */
+function chips(el, obj, key, label=v=>v){
+  Object.keys(obj).forEach(k=>{
+    const b=document.createElement('button'); b.className='chip'; b.textContent=label(obj[k],k); b.dataset.k=k;
+    b.onclick=()=>{state[key]=k; if(key==='style') ; update();}; $(el).appendChild(b);
+  });
+}
+chips('#pieces',PIECES,'piece');
+chips('#fits',FITS,'fit',v=>v.n);
+chips('#sizes',SIZES,'size',(v,k)=>k);
+chips('#styles',STYLES,'style');
+chips('#positions',POS,'pos');
+COLORS.forEach(c=>{
+  const b=document.createElement('button'); b.className='swatch'; b.style.background=c[1]; b.title=c[0]; b.setAttribute('aria-label',c[0]);
+  b.onclick=()=>{state.color=c; update();}; b.dataset.k=c[1]; $('#colors').appendChild(b);
+});
+function syncUI(){
+  const set=(sel,val)=>document.querySelectorAll(sel+' > *').forEach(e=>e.classList.toggle('active',e.dataset.k===val));
+  set('#pieces',state.piece); set('#fits',state.fit); set('#sizes',state.size); set('#styles',state.style); set('#positions',state.pos); set('#colors',state.color[1]);
+  $('#colorName').textContent=state.color[0];
+  $('#printList').innerHTML=state.prints.length?state.prints.map((p,i)=>`<li class="flex justify-between items-center border border-[color:var(--line)] px-3 py-2"><span>${STYLES[p.style]||'Arte enviada'} — ${POS[p.pos]}</span><button onclick="removePrint(${i})" class="text-[color:var(--mute)] hover:text-white" aria-label="Remover estampa"><i class="fa-solid fa-xmark"></i></button></li>`).join(''):'<li class="text-[color:var(--mute)]">Nenhuma estampa: camisa lisa.</li>';
+  const rows=specRows().map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join('');
+  $('#summary').innerHTML=rows;
+}
+function specRows(){
+  return [['Peça',PIECES[state.piece]],['Modelagem',FITS[state.fit].n],['Tamanho',state.size],['Cor',`${state.color[0]} (${state.color[1].toUpperCase()})`],
+          ['Estampas',state.prints.map(p=>`${STYLES[p.style]||'Arte enviada'} (${POS[p.pos]})`).join('; ')||'Nenhuma']];
+}
+
+/* ================= THREE.JS ================= */
+const stage=$('#stage');
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+stage.prepend(renderer.domElement);
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(35,1,.1,50); camera.position.set(0,.3,6.2);
+const controls=new THREE.OrbitControls(camera,renderer.domElement);
+Object.assign(controls,{enableZoom:false,enablePan:false,enableDamping:true,dampingFactor:.07,minDistance:3.2,maxDistance:9,autoRotate:!matchMedia('(prefers-reduced-motion: reduce)').matches,autoRotateSpeed:1.4});
+controls.addEventListener('start',()=>controls.autoRotate=false);
+
+// Iluminação de estúdio: luz de preenchimento, principal e contraluz bordô
+scene.add(new THREE.HemisphereLight(0xffffff,0x221114,.85));
+const key=new THREE.DirectionalLight(0xffffff,.65); key.position.set(3,4,5); scene.add(key);
+const rim=new THREE.PointLight(0xa51c30,1.1,16); rim.position.set(-4,1,-4); scene.add(rim);
+
+// Textura dinâmica (Canvas 2D) aplicada ao corpo da camisa
+const cv=document.createElement('canvas'), ctx=cv.getContext('2d');
+const tex=new THREE.CanvasTexture(cv); tex.wrapS=THREE.RepeatWrapping; tex.offset.x=.5; tex.anisotropy=8; // frente centralizada no meio do canvas
+const bodyMat=new THREE.MeshStandardMaterial({map:tex,roughness:.95,side:THREE.DoubleSide});
+const clothMat=new THREE.MeshStandardMaterial({color:0x1f1f1f,roughness:.95,side:THREE.DoubleSide});
+const neckMat=new THREE.MeshStandardMaterial({color:0x0c0c0c,roughness:1,side:THREE.DoubleSide});
+
+const tee=new THREE.Group(); scene.add(tee);
+// Sombra de chão simulada
+const sc=document.createElement('canvas'); sc.width=sc.height=128;
+const g=sc.getContext('2d').createRadialGradient(64,64,0,64,64,64); g.addColorStop(0,'rgba(0,0,0,.65)'); g.addColorStop(1,'rgba(0,0,0,0)');
+sc.getContext('2d').fillStyle=g; sc.getContext('2d').fillRect(0,0,128,128);
+const shadow=new THREE.Mesh(new THREE.PlaneGeometry(4.4,4.4),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(sc),transparent:true,depthWrite:false}));
+shadow.rotation.x=-Math.PI/2; scene.add(shadow);
+
+// Modelo procedural: tronco (cilindro elíptico com ombro cônico), mangas inclinadas e gola
+function buildTee(){
+  tee.children.slice().forEach(m=>{m.geometry&&m.geometry.dispose(); tee.remove(m);});
+  const f=FITS[state.fit], H=2.4*f.h, zS=.55;
+  const body=new THREE.CylinderGeometry(.93,1,H,96,28,true);
+  const p=body.attributes.position; // leve caimento/dobras no tecido pesado
+  for(let i=0;i<p.count;i++){const x=p.getX(i),y=p.getY(i),z=p.getZ(i),a=Math.atan2(x,z);
+    const k=1+.014*Math.sin(y*5+a*4)+.01*Math.sin(a*9); p.setX(i,x*k); p.setZ(i,z*k);}
+  body.computeVertexNormals();
+  const torso=new THREE.Mesh(body,bodyMat); torso.scale.set(f.w,1,f.w*zS); tee.add(torso);
+  const sh=new THREE.Mesh(new THREE.CylinderGeometry(.4,.93,.2,64,1,true),clothMat); // inclinação dos ombros
+  sh.scale.set(f.w,1,f.w*zS); sh.position.y=H/2+.1; tee.add(sh);
+  const collar=new THREE.Mesh(new THREE.TorusGeometry(.4,state.piece==='shirt'?.07:.05,14,64),clothMat);
+  collar.rotation.x=Math.PI/2; collar.scale.set(f.w,f.w*zS,1); collar.position.y=H/2+.2; tee.add(collar);
+  if(state.piece==='shirt')[-1,1].forEach(s=>{ // gola de camisa: duas abas triangulares
+    const t=new THREE.Shape(); t.moveTo(0,0); t.lineTo(s*.42,.03); t.lineTo(s*.08,-.42); t.closePath();
+    const fl=new THREE.Mesh(new THREE.ShapeGeometry(t),clothMat); fl.position.set(0,H/2+.28,.4*f.w*zS); fl.rotation.x=-.45; tee.add(fl);
+  });
+  const inner=new THREE.Mesh(new THREE.CircleGeometry(.4,48),neckMat);
+  inner.rotation.x=-Math.PI/2; inner.scale.set(f.w,f.w*zS,1); inner.position.y=H/2+.05; tee.add(inner);
+  const a=1.15, len=.95*f.sl; // a = ângulo da manga em relação à horizontal (maior = mais para baixo)
+  [-1,1].forEach(s=>{
+    const m=new THREE.Mesh(new THREE.CylinderGeometry(.46,.52,len,40,1,true),clothMat);
+    const sx=s*(.9*f.w), sy=H/2-.12;
+    m.position.set(sx+s*Math.cos(a)*len/2, sy-Math.sin(a)*len/2, 0);
+    m.rotation.z=-s*(Math.PI/2-a); m.scale.z=.8; tee.add(m);
+  });
+  shadow.position.y=-H/2-.35;
+}
+
+// Pinta a textura do tronco: cor base + trama + estampa
+const rand=(()=>{let s=7;return()=>(s=(s*16807)%2147483647)/2147483647})();
+function luminance(hex){const n=parseInt(hex.slice(1),16);return(.299*(n>>16)+.587*((n>>8)&255)+.114*(n&255))/255;}
+function paint(){
+  const f=FITS[state.fit], W=2048, H=Math.round(W*2.4*f.h/(2*Math.PI*f.w)), k=W/(2*Math.PI*f.w); // k = pixels por unidade 3D
+  cv.width=W; cv.height=H;
+  ctx.fillStyle=state.color[1]; ctx.fillRect(0,0,W,H);
+  for(let i=0;i<30000;i++){ctx.fillStyle=`rgba(${rand()>.5?255:0},${rand()>.5?255:0},${rand()>.5?255:0},.035)`;ctx.fillRect(rand()*W,rand()*H,1.5,1.5);}
+  const dark=luminance(state.color[1])<.5;
+  const fg=dark?'#ece8e1':'#121212', acc=state.color[1]==='#800020'?'#ece8e1':'#a51c30';
+  const SPOTS={left:[W/2+.42*k,.6*k,.4*k],center:[W/2,.75*k,.95*k],back:[0,.9*k,1.5*k]};
+  const draw=(cx,sp,p)=>{ctx.save();ctx.translate(cx,sp[1]);art(sp[2],fg,acc,p);ctx.restore();};
+  if(state.piece==='shirt')placket(W,H,k,fg);
+  state.prints.forEach(p=>{const sp=SPOTS[p.pos]; if(p.pos==='back'){draw(0,sp,p);draw(W,sp,p);}else draw(sp[0],sp,p);}); // costas ficam na emenda do canvas
+  tex.needsUpdate=true;
+}
+
+// Estampas gráficas (w = largura em px do desenho)
+function placket(W,H,k,fg){ // carcela e botões da camisa, desenhados na textura
+  ctx.fillStyle='rgba(0,0,0,.22)'; ctx.fillRect(W/2-.1*k,0,.2*k,H);
+  ctx.fillStyle='rgba(255,255,255,.12)'; ctx.fillRect(W/2-.1*k,0,.012*k,H); ctx.fillRect(W/2+.088*k,0,.012*k,H);
+  ctx.fillStyle=fg; ctx.globalAlpha=.85;
+  for(let y=.3*k;y<H-.1*k;y+=.42*k){ctx.beginPath();ctx.arc(W/2,y,.04*k,0,7);ctx.fill();}
+  ctx.globalAlpha=1;
+}
+function art(w,fg,acc,p){
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle=fg; ctx.strokeStyle=fg; ctx.lineWidth=w*.012;
+  const st=p.style,img=p.img; if(st==='custom'&&img){const r=Math.min(w/img.width,w/img.height);ctx.drawImage(img,-img.width*r/2,-img.height*r/2,img.width*r,img.height*r);return;}
+  if(st==='typo'){
+    ctx.font=`${w*.24}px Anton`; ctx.fillText('SUBSTANCE',0,0);
+    ctx.fillStyle=acc; ctx.fillRect(-w*.46,w*.16,w*.92,w*.025);
+    ctx.fillStyle=fg; ctx.font=`${w*.05}px Inter`; ctx.fillText('BLKOUT  /  STREET WEAR',0,w*.24);
+  }else if(st==='tech'){
+    ctx.beginPath();for(let i=0;i<8;i++){const a=i*Math.PI/4+Math.PI/8;ctx.lineTo(Math.cos(a)*w*.42,Math.sin(a)*w*.42);}ctx.closePath();ctx.stroke();
+    ctx.strokeStyle=acc;ctx.lineWidth=w*.02;ctx.beginPath();ctx.moveTo(-w*.5,0);ctx.lineTo(w*.5,0);ctx.moveTo(0,-w*.5);ctx.lineTo(0,w*.5);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font=`${w*.3}px Anton`;ctx.fillText('ZN-07',0,-w*.02);
+    ctx.font=`${w*.055}px Inter`;ctx.fillText('TECH//WEAR  PROTOCOL',0,w*.2);
+    for(let i=0;i<28;i++)ctx.fillRect(-w*.3+i*w*.022,w*.3,rand()*w*.012+w*.004,w*.07); // código de barras
+  }else if(st==='vintage'){
+    ctx.lineWidth=w*.03;ctx.beginPath();ctx.arc(0,0,w*.42,0,7);ctx.stroke();ctx.lineWidth=w*.01;ctx.beginPath();ctx.arc(0,0,w*.36,0,7);ctx.stroke();
+    ctx.font=`${w*.2}px Anton`;ctx.fillText('WASHED',0,-w*.08);ctx.fillStyle=acc;ctx.fillText('CLUB',0,w*.12);
+    ctx.fillStyle=state.color[1];for(let i=0;i<700;i++){const s=rand()*w*.012;ctx.fillRect((rand()-.5)*w,(rand()-.5)*w,s,s*(1+rand()*3));} // desgaste
+  }else{
+    for(let i=0;i<7;i++){ctx.fillStyle=i%2?fg:acc;ctx.globalAlpha=.9;ctx.beginPath();
+      const cx=(rand()-.5)*w*.6,cy=(rand()-.5)*w*.6,r=w*(.1+rand()*.18);
+      for(let j=0;j<10;j++){const a=j/10*6.283,rr=r*(.7+rand()*.6);ctx.lineTo(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr);}ctx.fill();}
+    ctx.globalAlpha=1;ctx.fillStyle=fg;ctx.font=`${w*.1}px Anton`;ctx.fillText('UNDERGROUND',0,w*.4);
+  }
+}
+
+/* ================= Atualização do estado ================= */
+let targetScale=1, curScale=1, pop=1;
+function update(){
+  const doUpdate=()=>{
+    syncUI(); clothMat.color.set(state.color[1]);
+    const bk=state.fit+state.piece; if(buildTee.fit!==bk){buildTee.fit=bk;buildTee();}
+    paint(); targetScale=SIZES[state.size]; pop=1.05; // feedback visual de "pulso"
+  };
+  document.fonts.load('100px Anton').then(doUpdate,doUpdate);
+}
+function addPrint(){
+  state.prints=state.prints.filter(p=>p.pos!==state.pos); // uma estampa por posição
+  state.prints.push({style:state.style,pos:state.pos,img:state.style==='custom'?userImg:null});
+  update(); toast('Estampa adicionada: '+POS[state.pos]);
+}
+function removePrint(i){state.prints.splice(i,1);update();}
+$('#addPrint').onclick=addPrint;
+$('#upload').addEventListener('change',e=>{
+  const file=e.target.files[0]; if(!file)return;
+  const r=new FileReader(); r.onload=()=>{const img=new Image();img.onload=()=>{userImg=img;state.style='custom';setTimeout(addPrint);
+    if(!$('#styles [data-k=custom]')){const b=document.createElement('button');b.className='chip';b.dataset.k='custom';b.textContent='Minha arte';b.onclick=()=>{state.style='custom';update();};$('#styles').appendChild(b);}
+    update();};img.src=r.result;}; r.readAsDataURL(file);
+});
+
+/* ================= Loop, resize, visões ================= */
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+new ResizeObserver(resize).observe(stage);
+let viewTarget=null;
+const VIEWS={front:[0,.3,6.2],side:[6.2,.3,0],back:[0,.3,-6.2]};
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{controls.autoRotate=false;viewTarget=new THREE.Vector3(...VIEWS[b.dataset.view]);});
+(function loop(){
+  requestAnimationFrame(loop);
+  pop+=(1-pop)*.12; curScale+=(targetScale-curScale)*.12; tee.scale.setScalar(curScale*pop);
+  if(viewTarget){camera.position.lerp(viewTarget,.08);if(camera.position.distanceTo(viewTarget)<.03)viewTarget=null;}
+  controls.update(); renderer.render(scene,camera);
+})();
+
+
+/* ================= Modal: ficha técnica ================= */
+const modal=$('#modal');
+document.querySelectorAll('[data-open-modal]').forEach(b=>b.onclick=()=>{
+  renderer.render(scene,camera); const url=renderer.domElement.toDataURL('image/png'); // captura logo após render
+  $('#snap').src=url; $('#save').href=url;
+  $('#specs').innerHTML=specRows().map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join('');
+  modal.classList.add('show'); document.body.style.overflow='hidden';
+});
+const closeModal=()=>{modal.classList.remove('show');document.body.style.overflow='';};
+$('#close').onclick=closeModal; modal.onclick=e=>{if(e.target===modal)closeModal();}; addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2000);}
+$('#copy').onclick=()=>{
+  const txt='BLKOUT — ESPECIFICAÇÕES DA AMOSTRA\n'+specRows().map(([a,b])=>`${a}: ${b}`).join('\n');
+  (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>toast('Especificações copiadas'),()=>toast('Não foi possível copiar neste navegador'));
+};
+
+update();
+</script>
+</body>
+</html>
